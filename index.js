@@ -17,8 +17,8 @@ app.get('/',(req,res)=>{
 //adding other routes
 app.use('/auth',require(path.join(__dirname,"routes/auth.route.js")))
 app.use('/user',require(path.join(__dirname,"routes/user.route.js")))
-
-
+app.use('/oauth',require(path.join(__dirname,"routes/oauth2.route.js")))
+app.use('/drive',require(path.join(__dirname,'routes/upload.route.js')))
 
 //setting up the port
 app.listen(port,()=>{
