@@ -2,6 +2,7 @@ const express  = require("express")
 const jwt = require("jsonwebtoken")
 const supabaseClient = require("../config/supabase.config")
 const crypto = require("crypto")
+const { timeStamp } = require("console")
 const router = express.Router()
 
 
@@ -44,9 +45,9 @@ router.post('/signup', async (req, res) => {
       .insert([
         {
           username: username,
-          password: password,
+          password_hash: password,
           email: email,
-          api: api[0]["id"],
+          api_id: api[0]["id"],
         },
       ])
       .select(); // optional: return inserted data
@@ -62,9 +63,6 @@ router.post('/signup', async (req, res) => {
     // 3️⃣ Success
     return res.send({
       result: true,
-      name: username,
-      email: email,
-      "api-key": api[0]["api_key"],
     });
   } catch (err) {
     console.error("Unexpected signup error:", err);
@@ -79,28 +77,40 @@ router.post('/signup', async (req, res) => {
 
 // Login Route
 router.post('/login',async (req,res)=>{
+    console.log("got a login request")
     email = req.body["email"]
     password = req.body["password"]
 
     const {data,error} = await supabaseClient.from('users').select(
-        "id,username,email,password"
+        "id,username,email,password_hash"
     ).eq("email",email)
-
+    console.log(data)
+    console.log(error)
     if(data && data.length > 0){
         const user = data[0]
         console.log(user)
+        if(user.password_hash != password){
+          res.send({
+            "result":"false",
+            "message":"Incorrect Email or Password."
+        })    
+        }
         const accessToken = jwt.sign({ email: user["email"] }, process.env.ACCESS_SECRET, { expiresIn: "15m" })
         const refreshToken = jwt.sign({email: user["email"] },process.env.REFRESH_SECRET,{expiresIn:"7d"})
 
         //save the access and refresh token in db
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + 7);
+        
         const { data: updatedUser, error: updateError } = await supabaseClient
-        .from("users")
-        .update({
-                access_token: accessToken,
-                refresh_token: refreshToken
-                })
-                .eq("id", user.id);
-
+        .from("refresh_tokens")
+        .insert({
+                user_id: user.id,
+                token_hash: refreshToken,
+                expires_at: expiresAt.toISOString(),
+                
+                });
+        console.log(updateError)
         if(updateError){
             res.send({
                 result:false,
@@ -121,7 +131,7 @@ router.post('/login',async (req,res)=>{
     else{
  res.send({
             "result":"false",
-            "message":"error occured while logging in, please try again."
+            "message":"error occured while logging in."
         })    }
 })
 

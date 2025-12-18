@@ -1,6 +1,7 @@
 const express = require("express")
 const path = require("path")
 const env = require("dotenv")
+const cors = require("cors")
 const app = express()
 
 //setting up the env file
@@ -8,6 +9,10 @@ env.config()
 port  = process.env.PORT
 
 
+app.use(cors({
+  origin: 'http://localhost:8080',
+  credentials: true
+}))
 app.use(express.json())
 
 app.get('/',(req,res)=>{
