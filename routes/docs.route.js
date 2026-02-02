@@ -1,52 +1,65 @@
 const express = require("express")
-const google = require("googleapis")
 const fs = require("fs");
+const supabaseClient = require("../config/supabase.config");
 const { time } = require("console");
 const router = express.Router();
-router.post("/get-generated-docs", (req, res) => {
-    /**
-     * Step 1: Fetch the generated Documents ID from the database for the specific user
-     * Step 2: Use DocID to get the documents metadata 
-     * Step 3: Return the document project metadata to the frontend 
-     */
-    //ST, not GET.
-    console.log("got request for getting generated documents");
-    console.log("Fetching generated documents for user");
+router.post("/get-generated-docs", async (req, res) => {
+  try {
+    console.log("Received request for getting generated documents");
 
-    const {id} = req.body;
+    const { id } = req.body;
 
-    res.send({
-        documents: [
-            // {
-            //     id: '1',
-            //     name: 'Research Paper Batch #101',
-            //     documentType: 'Research Paper',
-            //     language: 'English',
-            //     numDocs: 15,
-            //     createdAt: '2024-01-15T10:30:00',
-            //     status: 'completed',
-            // },
-            {
-                id: '2',
-                name: 'Invoice Set #202',
-                documentType: 'Invoice',
-                language: 'English',
-                numDocs: 10,
-                createdAt: '2024-02-20T14:45:00',
-                status: 'processing',
-            },
-            {
-                id: '3',
-                name: 'Legal Documents #303',
-                documentType: 'Legal',
-                language: 'English',
-                numDocs: 8,
-                createdAt: '2024-03-05T09:15:00',
-                status: 'failed',
-            },
-        ]
-    })
-}); 
+    // Validate user ID
+    if (!id) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "User ID is required in request body" 
+      });
+    }
+
+    console.log("Fetching generated documents for user:", id);
+
+    const { data, error } = await supabaseClient
+      .from("document_requests")
+      .select("*")
+      .eq("user_id", id);
+
+    // Handle Supabase errors
+    if (error) {
+      console.error("Supabase error:", error);
+      return res.status(500).json({ 
+        success: false, 
+        message: "Failed to fetch documents from database",
+        details: error.message 
+      });
+    }
+
+    // Handle case when no documents found
+    if (!data || data.length === 0) {
+      return res.status(200).json({ 
+        success: true, 
+        message: "No documents found for this user",
+        documents: [] 
+      });
+    }
+
+    console.log("Fetched documents:", data.length);
+
+    res.status(200).json({
+      success: true,
+      documents: data
+    });
+
+  } catch (err) {
+    console.error("Unexpected server error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Unexpected server error",
+      details: err.message
+    });
+  }
+});
+
 router.post('download-generated-docs', (req, res) => {
     const { docIds } = req.body;
     /**

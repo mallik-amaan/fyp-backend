@@ -135,62 +135,124 @@ router.post('/login',async (req,res)=>{
         })    }
 })
 
-// Refresh Route
 router.post("/refresh", async (req, res) => {
   const { refreshToken } = req.body;
-
-  if (!refreshToken) {
-    return res.status(401).json({ message: "Refresh token required" });
-  }
+  if (!refreshToken) return res.status(401).json({ message: "Refresh token required" });
 
   try {
-    // Verify token signature & expiration
-    jwt.verify(refreshToken, process.env.REFRESH_SECRET, async (err, decoded) => {
-      if (err) {
-        return res.status(403).json({ message: "Invalid or expired refresh token" });
-      }
+    const decoded = jwt.verify(refreshToken, process.env.REFRESH_SECRET);
+    if (decoded.type !== "refresh") return res.status(401).json({ message: "Invalid token type" });
 
-      // Check refresh token in DB
-      const { data, error } = await supabaseClient
-        .from("users")
-        .select("id, email, username, refresh_token")
-        .eq("email", decoded.email)
-        .single();
+    const { data, error } = await supabaseClient
+      .from("refresh_tokens")
+      .select("user_id, token_hash")
+      .eq("user_id", decoded.userId)
+      .single();
 
-      if (error || !data) {
-        return res.status(403).json({ message: "User not found" });
-      }
+    if (!data || hash(refreshToken) !== data.token_hash) {
+      return res.status(403).json({ message: "Invalid refresh token" });
+    }
 
-      if (data.refresh_token !== refreshToken) {
-        return res.status(403).json({ message: "Refresh token mismatch" });
-      }
+    const newAccessToken = jwt.sign({ userId: data.user_id, type: "access" }, process.env.ACCESS_SECRET, { expiresIn: "15m" });
+    const newRefreshToken = jwt.sign({ userId: data.user_id, type: "refresh" }, process.env.REFRESH_SECRET, { expiresIn: "7d" });
 
-      // Generate new access token
-      const newAccessToken = jwt.sign(
-        { email: data.email },
-        process.env.ACCESS_SECRET,  
-        { expiresIn: "15m" }
-      );
+    await supabaseClient.from("refresh_tokens").update({ token_hash: hash(newRefreshToken), expires_at: new Date(Date.now() + 7*24*60*60*1000) }).eq("user_id", data.user_id);
 
-      res.json({ accessToken: newAccessToken });
-    });
+    res.json({ accessToken: newAccessToken, refreshToken: newRefreshToken });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Server error" });
+    res.status(401).json({ message: "Invalid or expired refresh token" });
   }
 });
 
-module.exports = router
 
 
 const generateAPI = async (username) => {
-    const apikey = crypto.randomBytes(32).toString("hex");
+  const apikey = crypto.randomBytes(32).toString("hex");
     const {data,error} =await supabaseClient.from("apis").insert([{
         "api_key":apikey,
         //can be changed based on requirements
         "limit":1000,
     }]).select()
-
+    
     return data
 }
+
+router.post("/validate", (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith("Bearer ")) {
+      return res.status(401).json({
+        result: false,
+        message: "Authorization token missing",
+      });
+    }
+
+    const accessToken = authHeader.split(" ")[1];
+    const decoded = jwt.verify(accessToken, process.env.ACCESS_SECRET);
+
+    if (decoded.type !== "access") {
+      return res.status(401).json({
+        result: false,
+        message: "Invalid token type",
+      });
+    }
+
+    return res.status(200).json({
+      result: true,
+      email: decoded.email,
+    });
+  } catch (err) {
+    return res.status(401).json({
+      result: false,
+      message: "Invalid or expired token",
+    });
+  }
+});
+
+router.post('/change-password',async (req,res)=>{
+    const {id,oldPassword,newPassword} = req.body;
+    console.log("change password request for id: "+id)
+    console.log("old password: "+oldPassword)
+    console.log("new password: "+newPassword)
+    const {data,error} = await supabaseClient.from('users').select(
+        "id,username,email,password_hash"
+    ).eq("id",id)
+    console.log("change password data")
+    console.log(data) 
+    console.log(error)
+    if(data && data.length > 0){
+        const user = data[0]
+        console.log(user)
+        if(user.password_hash != oldPassword){
+          res.send({
+            "result":"false",
+            "message":"Incorrect Email or Password."
+        })    
+        }
+        const {data:updateData,error:updateError} = await supabaseClient.from('users').update({
+            "password_hash":newPassword
+        }).eq("email",email)
+        if(updateError){
+            res.send({
+                "result":"false",
+                "message":"Error occured while updating password."
+            })  
+        }
+        else{
+            res.send({
+                "result":"true",
+                "message":"Password updated successfully."
+            })  
+        }
+    }
+    else{
+ res.send({
+            "result":"false",
+            "message":"error occured while changing password."
+        })    }
+})
+
+module.exports = router
+
 
