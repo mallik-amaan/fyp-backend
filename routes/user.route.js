@@ -14,9 +14,28 @@ router.post('/get-dashboard-stats',(req,res)=>{
         "successRatio":"90%",
         "processingQueue":"3",
         "pendingReview":"5",
-        "verifiedToday":"10"
+        "verifiedToday":"10",
+        "recentGenerations":[
+            {
+                "docName":"Employment Letter",
+                "status":"Verified",
+                "date":"2024-10-01"
+            },
+            {
+                "docName":"Bank Statement",
+                "status":"Pending Review",
+                "date":"2024-10-02"
+            },
+            {
+                "docName":"Invoice",
+                "status":"Flagged",
+                "date":"2024-10-03"
+            }
+        ]   
     })
 })
+
+
 
 
 module.exports = router
