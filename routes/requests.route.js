@@ -203,9 +203,9 @@ router.post('/:requestId/complete', async (req, res) => {
 
     // 7️⃣ Send redaction request to Python backend
     try {
-      const redactionServiceUrl = process.env.REDACTION_SERVICE_URL || 'http://localhost:8000';
+      const redactionServiceUrl = process.env.REDACTION_SERVICE_URL;
       const redactionResponse = await fetch(
-        `https://312f713d9009.ngrok-free.app/redact_by_request/${requestId}`,
+        `${redactionServiceUrl}/redact_by_request/${requestId}`,
         {
           method: 'POST',
           headers: {
