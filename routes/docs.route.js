@@ -44,7 +44,7 @@ router.post("/get-generated-docs", async (req, res) => {
     }
 
     console.log("Fetched documents:", data.length);
-
+    console.log(data)
     res.status(200).json({
       success: true,
       documents: data

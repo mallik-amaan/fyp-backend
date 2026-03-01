@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const express = require('express');
 const supabase = require('../config/supabase.config');
+const { type } = require('os');
 
 const router = express.Router();
 
@@ -203,6 +204,7 @@ router.post('/:requestId/complete', async (req, res) => {
 
     // 7️⃣ Send redaction request to Python backend
     try {
+      console.log("sending redaction request")
       const redactionServiceUrl = process.env.REDACTION_SERVICE_URL;
       const redactionResponse = await fetch(
         `${redactionServiceUrl}/redact_by_request/${requestId}`,
@@ -235,6 +237,48 @@ router.post('/:requestId/complete', async (req, res) => {
   }
 });
 
+router.post('/:request_id/approve',async(req,res)=>{
+  const { request_id } = req.params;
+  console.log(`request for approved ${request_id} `)
+    console.log(`request for approved ${typeof(request_id)} `)
+
+//------------Approve the request and start document generation------
+
+  //First update the request_id to "Generation"
+  const {response,error} = await supabase.from("document_requests")
+  .update({
+    "status":"approved"
+  }).eq('id',request_id)
+
+  if(error){
+    console.log(error)
+
+  }
+  //Start Generation Process
+  //when API is deployed, send request for generation
+  console.log(`database resposne ${response}`)
+  res.send({
+    "success":true
+  })
+})
+
+
+router.post('/:requestId/reject',async(req,res)=>{
+  const { request_id } = req.params;
+
+//------------Approve the request and start document generation------
+
+  //First update the request_id to "Generation"
+  const response = await supabase.from("document_requests")
+  .update({
+    "status":"failed"
+  })
+  //Start Generation Process
+  //when API is deployed, send request for generation
+  res.send({
+    "success":true
+  })
+})
 module.exports = router;
 
 
