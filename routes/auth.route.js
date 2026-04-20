@@ -168,15 +168,23 @@ router.post("/refresh", async (req, res) => {
 
 
 const generateAPI = async (username) => {
-  const apikey = crypto.randomBytes(32).toString("hex");
-    const {data,error} =await supabaseClient.from("apis").insert([{
-        "api_key":apikey,
-        //can be changed based on requirements
-        "limit":1000,
-    }]).select()
-    
-    return data
-}
+  const startString = "ds"; // change this to your required prefix
+  const apikey = `${startString}-${username.split(' ')[0]}-${crypto.randomBytes(12).toString("hex")}`;
+
+  const { data, error } = await supabaseClient
+    .from("apis")
+    .insert([
+      {
+        api_key: apikey,
+        // can be changed based on requirements
+        limit: 1000,
+      },
+    ])
+    .select();
+
+  if (error) throw error;
+  return data;
+};
 
 router.post("/validate", (req, res) => {
   try {
@@ -253,6 +261,59 @@ router.post('/change-password',async (req,res)=>{
         })    }
 })
 
+router.get('/:id/get-api-key',(req,res)=>{
+  (async () => {
+    try {
+      const { id } = req.params;
+
+      if (!id) {
+        return res.status(400).send({
+          result: false,
+          message: "User id is required.",
+        });
+      }
+
+      // 1) Get user's api_id
+      const { data: user, error: userError } = await supabaseClient
+        .from("users")
+        .select("api_id")
+        .eq("id", id)
+        .single();
+
+      if (userError || !user || !user.api_id) {
+        return res.status(404).send({
+          result: false,
+          message: "API key not found for this user.",
+        });
+      }
+
+      // 2) Fetch API key from apis table
+      const { data: api, error: apiError } = await supabaseClient
+        .from("apis")
+        .select("api_key")
+        .eq("id", user.api_id)
+        .single();
+
+      if (apiError || !api || !api.api_key) {
+        return res.status(404).send({
+          result: false,
+          message: "API key does not exist.",
+        });
+      }
+
+      return res.status(200).send({
+        result: true,
+        apiKey: api.api_key,
+      });
+    } catch (err) {
+      console.error("get-api-key error:", err);
+      return res.status(500).send({
+        result: false,
+        message: "Unexpected server error.",
+      });
+    }
+  })();
+})
 module.exports = router
 
 
