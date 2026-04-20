@@ -20,4 +20,9 @@ router.post('/sumbit-review',(req,res) => {
     finally{
 
     }
+
+router.post('/flagged-docs',(req,res)=>{
+    
+})
+
 })
