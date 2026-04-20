@@ -420,7 +420,7 @@ router.post('/:requestId/approve', async (req, res) => {
     res.status(500).json({ error: 'Failed to approve request' });
   }
 })
-module.exports = router;
+
 router.post('/:requestId/get-download-link', async (req, res) => {
   const { requestId } = req.params;
 
@@ -605,3 +605,5 @@ router.get('/:requestId/poll-status', async (req, res) => {
   }
 });
 
+
+module.exports = router;

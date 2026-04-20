@@ -22,6 +22,7 @@ app.use('/user',require(path.join(__dirname,"routes/user.route.js")))
 app.use('/oauth',require(path.join(__dirname,"routes/oauth2.route.js")))
 app.use('/upload',require(path.join(__dirname,'routes/upload.route.js')))
 app.use('/docs',require(path.join(__dirname,'routes/docs.route.js')))
+app.use('/analytics',require(path.join(__dirname,'routes/analytics.route.js')))
 app.use('/generate',require(path.join(__dirname,'routes/generate.route.js')))
 app.use('/requests',require(path.join(__dirname,'routes/requests.route.js')))
 //setting up the port

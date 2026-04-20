@@ -1,115 +1,159 @@
 const express = require("express")
-const fs = require("fs");
 const supabaseClient = require("../config/supabase.config");
-const { time } = require("console");
 const router = express.Router();
+
 router.post("/get-generated-docs", async (req, res) => {
   try {
-    console.log("Received request for getting generated documents");
-
     const { id } = req.body;
 
-    // Validate user ID
     if (!id) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "User ID is required in request body" 
-      });
+      return res.status(400).json({ success: false, message: "User ID is required" });
     }
-
-    console.log("Fetching generated documents for user:", id);
 
     const { data, error } = await supabaseClient
       .from("document_requests")
       .select("*")
       .eq("user_id", id);
 
-    // Handle Supabase errors
-    if (error) {
-      console.error("Supabase error:", error);
-      return res.status(500).json({ 
-        success: false, 
-        message: "Failed to fetch documents from database",
-        details: error.message 
-      });
-    }
+    if (error) throw error;
 
-    // Handle case when no documents found
-    if (!data || data.length === 0) {
-      return res.status(200).json({ 
-        success: true, 
-        message: "No documents found for this user",
-        documents: [] 
-      });
-    }
-
-    console.log("Fetched documents:", data.length);
-      res.status(200).json({
-      success: true,
-      documents: data
-    });
-
+    return res.status(200).json({ success: true, documents: data || [] });
   } catch (err) {
     console.error("Unexpected server error:", err);
-    res.status(500).json({
-      success: false,
-      message: "Unexpected server error",
-      details: err.message
-    });
+    res.status(500).json({ success: false, message: "Unexpected server error", details: err.message });
   }
 });
 
-router.post('download-generated-docs', (req, res) => {
-    const { docIds } = req.body;
-    /**
-     * Step 1: Fetch the generated Documents zip file links from the database using the docIds
-     * Step 2: Return the document zip file links to the frontend for downloading
-     */
-    res.send({
-        downloadLinks: docIds.map(id => ({
-            id: id,
-            link: `http://example.com/download/doc${id}.zip`
-        }))
-    })
+// Download generated docs ZIP for a request
+router.post('/download-generated-docs', async (req, res) => {
+  const { docId } = req.body;
+
+  if (!docId) {
+    return res.status(400).json({ success: false, message: 'docId is required' });
+  }
+
+  try {
+    // First check generated_documents table (populated by generation service)
+    const { data: genData } = await supabaseClient
+      .from('generated_documents')
+      .select('file_url')
+      .eq('request_id', docId)
+      .limit(1)
+      .single();
+
+    if (genData?.file_url) {
+      return res.json({ success: true, url: genData.file_url });
+    }
+
+    // Fall back: find ZIP in storage under requestId folder
+    const { data: files, error: listError } = await supabaseClient.storage
+      .from('doc_storage')
+      .list(docId, { limit: 20 });
+
+    if (listError) throw listError;
+
+    const zipFile = (files || [])
+      .filter(f => f.name.endsWith('.zip'))
+      .sort((a, b) => (b.metadata?.lastModified || 0) - (a.metadata?.lastModified || 0))[0];
+
+    if (!zipFile) {
+      return res.status(404).json({ success: false, message: 'No generated files found yet' });
+    }
+
+    const { data: signedData, error: signedError } = await supabaseClient.storage
+      .from('doc_storage')
+      .createSignedUrl(`${docId}/${zipFile.name}`, 3600);
+
+    if (signedError) throw signedError;
+
+    res.json({ success: true, url: signedData.signedUrl, fileName: zipFile.name });
+  } catch (err) {
+    console.error('Download error:', err);
+    res.status(500).json({ success: false, message: 'Failed to get download link' });
+  }
 });
 
-router.post('/download-gt-files', (req, res) => {
-    const { docIds } = req.body;
-    /**
-     * Step 1: Fetch the generated Ground Truth file links from the database using the docIds
-     * Step 2: Return the Ground Truth file links to the frontend for downloading
-     */
-    res.send({
-        downloadLinks: docIds.map(id => ({
-            id: id,
-            link: `http://example.com/download/gt_doc${id}.txt`
-        }))
-    })
-});
-        
-router.get('/get-next-docs/:id', (req, res) => {
-    const docId = req.params.id;
-    /**
-     * Step 1: Fetch the required document content from the drive using the docId
-     * Step 2: Return the document content to the frontend for downloading
-     */
-    res.send({
-        id: docId,
-        title: "Document " + docId,
-        content: "This is the content of document " + docId
-    })
-});
-router.get('/get-next-gt/:id', (req, res) => {
-    const docId = req.params.id;
-    /**
-     * Step 1: Fetch the generated Ground Truth file link from the database using the docId
-     * Step 2: Return the Ground Truth file link to the frontend for downloading
-     */
-    res.send({
-        id: docId,
-        title: "Google Transcript for Document " + docId,
-        link: "http://example.com/gt/doc" + docId + ".txt"
-    })
+// Download ground truth files for a request (same ZIP approach)
+router.post('/download-gt-files', async (req, res) => {
+  const { docId } = req.body;
+
+  if (!docId) {
+    return res.status(400).json({ success: false, message: 'docId is required' });
+  }
+
+  try {
+    const { data: files, error: listError } = await supabaseClient.storage
+      .from('doc_storage')
+      .list(docId, { limit: 20 });
+
+    if (listError) throw listError;
+
+    const zipFile = (files || [])
+      .filter(f => f.name.endsWith('.zip'))
+      .sort((a, b) => (b.metadata?.lastModified || 0) - (a.metadata?.lastModified || 0))[0];
+
+    if (!zipFile) {
+      return res.status(404).json({ success: false, message: 'No generated files found yet' });
+    }
+
+    const { data: signedData, error: signedError } = await supabaseClient.storage
+      .from('doc_storage')
+      .createSignedUrl(`${docId}/${zipFile.name}`, 3600);
+
+    if (signedError) throw signedError;
+
+    res.json({ success: true, url: signedData.signedUrl, fileName: zipFile.name });
+  } catch (err) {
+    console.error('Download error:', err);
+    res.status(500).json({ success: false, message: 'Failed to get download link' });
+  }
 });
 
-module.exports = router
+// Delete a document request and all associated files
+router.delete('/delete-doc/:requestId', async (req, res) => {
+  const { requestId } = req.params;
+
+  try {
+    // Get all file paths for this request
+    const { data: files } = await supabaseClient
+      .from('request_files')
+      .select('storage_path')
+      .eq('request_id', requestId);
+
+    // Delete seed/asset files from storage
+    if (files && files.length > 0) {
+      const paths = files.map(f => f.storage_path).filter(Boolean);
+      if (paths.length > 0) {
+        await supabaseClient.storage.from('doc_storage').remove(paths);
+      }
+    }
+
+    // Delete output files (ZIPs) from storage
+    const { data: outputFiles } = await supabaseClient.storage
+      .from('doc_storage')
+      .list(requestId, { limit: 100 });
+
+    if (outputFiles && outputFiles.length > 0) {
+      const outputPaths = outputFiles.map(f => `${requestId}/${f.name}`);
+      await supabaseClient.storage.from('doc_storage').remove(outputPaths);
+    }
+
+    // Delete DB records
+    await supabaseClient.from('request_files').delete().eq('request_id', requestId);
+    await supabaseClient.from('generated_documents').delete().eq('request_id', requestId);
+
+    const { error: deleteError } = await supabaseClient
+      .from('document_requests')
+      .delete()
+      .eq('id', requestId);
+
+    if (deleteError) throw deleteError;
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Delete error:', err);
+    res.status(500).json({ success: false, message: 'Failed to delete document' });
+  }
+});
+
+module.exports = router;
