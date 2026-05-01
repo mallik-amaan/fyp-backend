@@ -98,7 +98,7 @@ router.post('/submit-review', async (req, res) => {
 
     const { error } = await supabase
       .from('document_requests')
-      .update({ status: newStatus, updated_at: new Date().toISOString() })
+      .update({ status: newStatus })
       .eq('id', sessionId);
 
     if (error) throw error;
