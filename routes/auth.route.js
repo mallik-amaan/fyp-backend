@@ -2,17 +2,22 @@ const express  = require("express")
 const jwt = require("jsonwebtoken")
 const supabaseClient = require("../config/supabase.config")
 const crypto = require("crypto")
-const { Resend } = require("resend")
+const nodemailer = require("nodemailer")
 const router = express.Router()
 
 // ─── Environment check (logged once at startup) ──────────────────────────────
-console.log("[auth] RESEND_API_KEY present:", !!process.env.RESEND_API_KEY)
-console.log("[auth] FROM_EMAIL:", process.env.FROM_EMAIL || "(not set — will use onboarding@resend.dev)")
+console.log("[auth] GMAIL_USER present:", !!process.env.GMAIL_USER)
+console.log("[auth] GMAIL_APP_PASSWORD present:", !!process.env.GMAIL_APP_PASSWORD)
 console.log("[auth] ACCESS_SECRET present:", !!process.env.ACCESS_SECRET)
 console.log("[auth] REFRESH_SECRET present:", !!process.env.REFRESH_SECRET)
 
-const resend    = new Resend(process.env.RESEND_API_KEY)
-const FROM_EMAIL = process.env.FROM_EMAIL || "onboarding@resend.dev"
+const mailer = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.GMAIL_USER,
+    pass: process.env.GMAIL_APP_PASSWORD,
+  },
+})
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -25,15 +30,15 @@ function hashOTP(otp) {
 }
 
 async function sendOTPEmail(email, otp, purpose) {
-  console.log(`[sendOTPEmail] to=${email} purpose=${purpose} from=${FROM_EMAIL}`)
+  console.log(`[sendOTPEmail] to=${email} purpose=${purpose} from=${process.env.GMAIL_USER}`)
 
   const isReset = purpose === "reset_password"
   const subject = isReset ? "Reset your password — DocSynth" : "Verify your email — DocSynth"
   const action  = isReset ? "reset your password" : "verify your email address"
 
-  const { data, error } = await resend.emails.send({
-    from: `DocSynth <${FROM_EMAIL}>`,
-    to:   [email],
+  const info = await mailer.sendMail({
+    from:    `DocSynth <${process.env.GMAIL_USER}>`,
+    to:      email,
     subject,
     html: `
       <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;background:#fff;border-radius:12px;border:1px solid #e5e7eb">
@@ -53,12 +58,7 @@ async function sendOTPEmail(email, otp, purpose) {
     `,
   })
 
-  if (error) {
-    console.error("[sendOTPEmail] Resend API error:", JSON.stringify(error))
-    throw new Error(error.message || "Failed to send email")
-  }
-
-  console.log(`[sendOTPEmail] delivered messageId=${data?.id} to=${email}`)
+  console.log(`[sendOTPEmail] delivered messageId=${info.messageId} to=${email}`)
 }
 
 async function storeOTP(email, otp, purpose) {
