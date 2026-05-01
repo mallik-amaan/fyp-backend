@@ -8,8 +8,29 @@ const app = express()
 env.config()
 const port = process.env.PORT || 3000
 
-// CORS for local development: reflect request origin and allow credentials
-app.use(cors({ origin: true, credentials: true }))
+const allowedOrigins = [
+  'https://doc-synthesis.vercel.app',
+  'http://localhost:5173',
+  'http://localhost:8080',
+  'http://localhost:3000',
+];
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Allow requests with no origin (curl, Postman, server-to-server)
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error(`CORS: origin ${origin} not allowed`));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions)); // handle preflight for all routes
 app.use(express.json())
 
 app.get('/',(req,res)=>{
