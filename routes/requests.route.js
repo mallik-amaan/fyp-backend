@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const express = require('express');
 const supabase = require('../config/supabase.config');
+const { incrementUsage } = require('../utils/usageHelper');
 const { type } = require('os');
 const http = require("http")
 const fs = require("fs");
@@ -44,6 +45,10 @@ router.post('/create-with-urls', async (req, res) => {
       });
 
     if (requestError) throw requestError;
+
+    const numSolutions = Number(metadata?.numSolutions) || 1
+    incrementUsage(userId, 'generation_requests_used').catch(() => {})
+    incrementUsage(userId, 'docs_generated_used', numSolutions).catch(() => {})
 
     // ---------- helper ----------
     async function createSignedUpload(path) {

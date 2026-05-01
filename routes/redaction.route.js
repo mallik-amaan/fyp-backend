@@ -1,6 +1,7 @@
 const express = require('express');
 const crypto  = require('crypto');
 const supabase = require('../config/supabase.config');
+const { incrementUsage } = require('../utils/usageHelper');
 
 const router = express.Router();
 
@@ -28,6 +29,8 @@ router.post('/upload', async (req, res) => {
       });
 
     if (reqError) throw reqError;
+
+    incrementUsage(userId, 'redactions_used').catch(() => {})
 
     const { data: signedData, error: signError } = await supabase.storage
       .from('doc_storage')

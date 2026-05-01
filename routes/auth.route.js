@@ -171,6 +171,22 @@ router.post("/signup", async (req, res) => {
       return res.status(500).json({ result: false, message: "Failed to create user." })
     }
 
+    // Assign basic plan usage record
+    const { data: basicPlan } = await supabaseClient.from("plans").select("id").eq("name", "basic").single()
+    if (basicPlan) {
+      const { data: newUser } = await supabaseClient.from("users").select("id").eq("email", email).single()
+      if (newUser) {
+        await supabaseClient.from("user_usage").insert({
+          user_id: newUser.id,
+          plan_id: basicPlan.id,
+          generation_requests_used: 0,
+          redactions_used: 0,
+          docs_generated_used: 0,
+          period_start: new Date().toISOString(),
+        })
+      }
+    }
+
     console.log(`[signup] user created email=${email} — storing and sending OTP`)
     const otp = generateOTP()
     await storeOTP(email, otp, "verify_email")
