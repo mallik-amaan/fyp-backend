@@ -77,36 +77,35 @@ router.patch('/pairs/:pairId/flag', async (req, res) => {
 });
 
 // POST /analytics/submit-review
-// Finalises review for a session — reads flag state from DB and updates request status
+// Finalises review for a session — uses flagged indices sent by frontend to set request status
 router.post('/submit-review', async (req, res) => {
-  const { sessionId } = req.body;
+  const { sessionId, flagged } = req.body;
 
   if (!sessionId) {
     return res.status(400).json({ success: false, message: 'sessionId is required' });
   }
 
   try {
-    const { data: pairs, error: fetchError } = await supabase
-      .from('generated_documents')
-      .select('id, flagged')
-      .eq('request_id', sessionId);
-
-    if (fetchError) throw fetchError;
-
-    const hasFlagged = pairs && pairs.some(p => p.flagged);
+    // Use flagged array sent by frontend directly (non-empty = has flagged docs)
+    const hasFlagged = Array.isArray(flagged) ? flagged.length > 0 : false;
     const newStatus = hasFlagged ? 'flagged' : 'completed';
+
+    console.log(`[submit-review] sessionId=${sessionId} flagged=${JSON.stringify(flagged)} → status=${newStatus}`)
 
     const { error } = await supabase
       .from('document_requests')
       .update({ status: newStatus })
       .eq('id', sessionId);
 
-    if (error) throw error;
+    if (error) {
+      console.error('[submit-review] DB update error:', error.message, 'code:', error.code)
+      throw error;
+    }
 
     res.json({ success: true, status: newStatus });
   } catch (err) {
-    console.error('Review submission error:', err);
-    res.status(500).json({ success: false, message: 'Failed to submit review' });
+    console.error('[submit-review] error:', err?.message || err);
+    res.status(500).json({ success: false, message: err?.message || 'Failed to submit review' });
   }
 });
 

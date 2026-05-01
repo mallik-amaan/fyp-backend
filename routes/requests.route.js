@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const express = require('express');
 const supabase = require('../config/supabase.config');
-const { incrementUsage } = require('../utils/usageHelper');
+const { incrementUsage, checkUsageLimit } = require('../utils/usageHelper');
 const { type } = require('os');
 const http = require("http")
 const fs = require("fs");
@@ -29,6 +29,28 @@ router.post('/create-with-urls', async (req, res) => {
       return res.status(400).json({ error: 'At least 1 seed doc required' });
     }
 
+    // ---------- check usage limits ----------
+    const numSolutions = Number(metadata?.numSolutions) || 1
+
+    const [genCheck, docsCheck] = await Promise.all([
+      checkUsageLimit(userId, 'generation_requests_used', 'generation_requests_limit'),
+      checkUsageLimit(userId, 'docs_generated_used', 'docs_generated_limit', numSolutions),
+    ])
+
+    if (!genCheck.allowed) {
+      return res.status(403).json({
+        error: 'Generation request limit reached',
+        message: `You have used ${genCheck.used} of ${genCheck.limit} generation requests on your current plan. Upgrade to continue.`,
+      })
+    }
+
+    if (!docsCheck.allowed) {
+      return res.status(403).json({
+        error: 'Document generation limit reached',
+        message: `Generating ${numSolutions} document(s) would exceed your plan limit of ${docsCheck.limit} docs. Upgrade to continue.`,
+      })
+    }
+
     // ---------- generate requestId ----------
     const requestId = crypto.randomUUID();
     const bucket = 'doc_storage';
@@ -46,9 +68,8 @@ router.post('/create-with-urls', async (req, res) => {
 
     if (requestError) throw requestError;
 
-    const numSolutions = Number(metadata?.numSolutions) || 1
     incrementUsage(userId, 'generation_requests_used').catch(() => {})
-    incrementUsage(userId, 'docs_generated_used', numSolutions).catch(() => {})
+    incrementUsage(userId, 'docs_generated_used', numSolutions).catch(() => {}) // numSolutions defined in limit check block above
 
     // ---------- helper ----------
     async function createSignedUpload(path) {

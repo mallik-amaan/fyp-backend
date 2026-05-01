@@ -1,5 +1,6 @@
 const express = require('express')
 const supabase = require('../config/supabase.config')
+const { maybeResetPeriod } = require('../utils/usageHelper')
 const router = express.Router()
 
 // GET /usage/:userId
@@ -8,6 +9,8 @@ router.get('/:userId', async (req, res) => {
   if (!userId) return res.status(400).json({ result: false, message: 'userId is required' })
 
   try {
+    await maybeResetPeriod(userId)
+
     const { data, error } = await supabase
       .from('user_usage')
       .select(`

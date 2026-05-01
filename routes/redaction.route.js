@@ -1,7 +1,7 @@
 const express = require('express');
 const crypto  = require('crypto');
 const supabase = require('../config/supabase.config');
-const { incrementUsage } = require('../utils/usageHelper');
+const { incrementUsage, checkUsageLimit } = require('../utils/usageHelper');
 
 const router = express.Router();
 
@@ -14,6 +14,14 @@ router.post('/upload', async (req, res) => {
   }
 
   try {
+    const limitCheck = await checkUsageLimit(userId, 'redactions_used', 'redactions_limit')
+    if (!limitCheck.allowed) {
+      return res.status(403).json({
+        error: 'Redaction limit reached',
+        message: `You have used ${limitCheck.used} of ${limitCheck.limit} redactions on your current plan. Upgrade to continue.`,
+      })
+    }
+
     const requestId  = crypto.randomUUID();
     const safeName   = `${crypto.randomUUID()}_${fileName}`;
     const storagePath = `${userId}/${requestId}/seeddocs/${safeName}`;
