@@ -31,6 +31,9 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 app.options(/.*/, cors(corsOptions)); // handle preflight for all routes (Express 5 compatible)
+
+// Stripe webhook needs raw body — must be registered before express.json()
+app.use('/stripe/webhook', express.raw({ type: 'application/json' }))
 app.use(express.json())
 
 app.get('/',(req,res)=>{
@@ -48,6 +51,7 @@ app.use('/generate',require(path.join(__dirname,'routes/generate.route.js')))
 app.use('/requests',require(path.join(__dirname,'routes/requests.route.js')))
 app.use('/redaction',require(path.join(__dirname,'routes/redaction.route.js')))
 app.use('/usage',require(path.join(__dirname,'routes/usage.route.js')))
+app.use('/stripe',require(path.join(__dirname,'routes/stripe.route.js')))
 //setting up the port
 app.listen(port,()=>{
     console.log(`Server started at port: ${port}`)
