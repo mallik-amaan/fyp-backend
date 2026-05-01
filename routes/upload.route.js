@@ -104,7 +104,7 @@ router.post("/storage",upload.single("file"),async (req,res) => {
 
     // Get public URL
     const { data: publicUrl } = supabaseClient.storage
-      .from("documents")
+      .from("doc_storage")
       .getPublicUrl(fileName);
 
     return res.status(200).json({

@@ -4,10 +4,12 @@ const router = express.Router();
 const supabaseClient = require("../config/supabase.config");
 const authenticateToken = require("../config/middleware/auth.middleware");
 
+const OAUTH_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || "http://localhost:3000/oauth/oauth2callback";
+
 const oauth2Client = new google.Auth.OAuth2Client(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_CLIENT_SECRET,
-  "http://localhost:3000/oauth/oauth2callback"
+  OAUTH_REDIRECT_URI
 );
 
 // 1. Redirect user to Google consent screen
@@ -41,17 +43,37 @@ router.get("/oauth2callback", async (req, res) => {
 
   try {
     const { tokens } = await oauth2Client.getToken(code);
-    const { error } = await supabaseClient
-      .from("user_integrations")
-      .upsert([{
-        user_id: userId,
-        refresh_token: tokens.refresh_token,
-        access_token: tokens.access_token,
-        is_connected: true,
-        provider: "Google",
-      }], { onConflict: 'user_id,provider' });
 
-    if (error) console.error("Error saving tokens:", error);
+    const tokenData = {
+      user_id: userId,
+      provider: "google_drive",
+      refresh_token: tokens.refresh_token,
+      access_token: tokens.access_token,
+      token_expires_at: tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : null,
+      is_connected: true,
+      updated_at: new Date().toISOString(),
+    };
+
+    // Check if a row already exists for this user + provider
+    const { data: existing } = await supabaseClient
+      .from("user_integrations")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("provider", "google_drive")
+      .single();
+
+    if (existing?.id) {
+      const { error } = await supabaseClient
+        .from("user_integrations")
+        .update(tokenData)
+        .eq("id", existing.id);
+      if (error) console.error("Error updating tokens:", error);
+    } else {
+      const { error } = await supabaseClient
+        .from("user_integrations")
+        .insert(tokenData);
+      if (error) console.error("Error inserting tokens:", error);
+    }
   } catch (err) {
     console.error("OAuth callback error:", err);
   }
@@ -61,14 +83,29 @@ router.get("/oauth2callback", async (req, res) => {
 
 // 3. Check Google Drive connection status
 router.get("/google/status", authenticateToken, async (req, res) => {
-  const userId = req.user.id;
+  const userEmail = req.user.email;
+  console.log('[status] checking for email:', userEmail);
+
+  const { data: userData, error: userError } = await supabaseClient
+    .from("users")
+    .select("id")
+    .eq("email", userEmail)
+    .single();
+
+  console.log('[status] user lookup:', userData?.id, userError?.message);
+
+  if (userError || !userData) {
+    return res.json({ connected: false });
+  }
+
   const { data, error } = await supabaseClient
     .from("user_integrations")
     .select("is_connected")
-    .eq("user_id", userId)
-    .eq("provider", "Google")
+    .eq("user_id", userData.id)
+    .eq("provider", "google_drive")
     .single();
 
+  console.log('[status] integration lookup:', data, error?.message);
   res.json({ connected: !error && data?.is_connected === true });
 });
 

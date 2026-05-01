@@ -78,8 +78,8 @@ router.post('/signup', async (req, res) => {
 // Login Route
 router.post('/login',async (req,res)=>{
     console.log("got a login request")
-    email = req.body["email"]
-    password = req.body["password"]
+    const email = req.body["email"]
+    const password = req.body["password"]
 
     const {data,error} = await supabaseClient.from('users').select(
         "id,username,email,password_hash"
@@ -89,11 +89,11 @@ router.post('/login',async (req,res)=>{
     if(data && data.length > 0){
         const user = data[0]
         console.log(user)
-        if(user.password_hash != password){
-          res.send({
+            if(user.password_hash != password){
+          return res.send({
             "result":"false",
             "message":"Incorrect Email or Password."
-        })    
+        })
         }
         const accessToken = jwt.sign({ email: user["email"] }, process.env.ACCESS_SECRET, { expiresIn: "15m" })
         const refreshToken = jwt.sign({email: user["email"] },process.env.REFRESH_SECRET,{expiresIn:"7d"})
@@ -136,29 +136,31 @@ router.post('/login',async (req,res)=>{
 })
 
 router.post("/refresh", async (req, res) => {
-  const { refreshToken } = req.body;
-  if (!refreshToken) return res.status(401).json({ message: "Refresh token required" });
+  const { refreshToken, refresh_token } = req.body;
+  const token = refreshToken || refresh_token;
+  if (!token) return res.status(401).json({ message: "Refresh token required" });
 
   try {
-    const decoded = jwt.verify(refreshToken, process.env.REFRESH_SECRET);
-    if (decoded.type !== "refresh") return res.status(401).json({ message: "Invalid token type" });
+    const decoded = jwt.verify(token, process.env.REFRESH_SECRET);
 
     const { data, error } = await supabaseClient
       .from("refresh_tokens")
       .select("user_id, token_hash")
-      .eq("user_id", decoded.userId)
+      .eq("token_hash", token)
       .single();
 
-    if (!data || hash(refreshToken) !== data.token_hash) {
+    if (!data) {
       return res.status(403).json({ message: "Invalid refresh token" });
     }
 
-    const newAccessToken = jwt.sign({ userId: data.user_id, type: "access" }, process.env.ACCESS_SECRET, { expiresIn: "15m" });
-    const newRefreshToken = jwt.sign({ userId: data.user_id, type: "refresh" }, process.env.REFRESH_SECRET, { expiresIn: "7d" });
+    const newAccessToken = jwt.sign({ email: decoded.email }, process.env.ACCESS_SECRET, { expiresIn: "15m" });
+    const newRefreshToken = jwt.sign({ email: decoded.email }, process.env.REFRESH_SECRET, { expiresIn: "7d" });
 
-    await supabaseClient.from("refresh_tokens").update({ token_hash: hash(newRefreshToken), expires_at: new Date(Date.now() + 7*24*60*60*1000) }).eq("user_id", data.user_id);
+    await supabaseClient.from("refresh_tokens")
+      .update({ token_hash: newRefreshToken, expires_at: new Date(Date.now() + 7*24*60*60*1000) })
+      .eq("token_hash", token);
 
-    res.json({ accessToken: newAccessToken, refreshToken: newRefreshToken });
+    res.json({ access_token: newAccessToken, refresh_token: newRefreshToken });
   } catch (err) {
     console.error(err);
     res.status(401).json({ message: "Invalid or expired refresh token" });
@@ -233,14 +235,14 @@ router.post('/change-password',async (req,res)=>{
         const user = data[0]
         console.log(user)
         if(user.password_hash != oldPassword){
-          res.send({
+          return res.send({
             "result":"false",
             "message":"Incorrect Email or Password."
-        })    
+        })
         }
         const {data:updateData,error:updateError} = await supabaseClient.from('users').update({
             "password_hash":newPassword
-        }).eq("email",email)
+        }).eq("id",id)
         if(updateError){
             res.send({
                 "result":"false",

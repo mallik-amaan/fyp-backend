@@ -1,37 +1,28 @@
-# Use official Node.js slim image (latest stable)
+# Use official Node.js slim image
 FROM node:22-slim
 
-# Install common system dependencies for Node.js servers
+# Install tini for proper signal handling
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends \
 		ca-certificates \
-		curl \
 		tini \
 	&& rm -rf /var/lib/apt/lists/*
 
 # Create app directory
 WORKDIR /app
 
-# Copy package files first (for better caching)
+# Copy package files first (layer caching)
 COPY package.json package-lock.json ./
 
-# Install dependencies
-RUN npm ci
+# Install production dependencies only
+RUN npm ci --omit=dev
 
-# Copy rest of the code
+# Copy source code (node_modules and .env are excluded by .dockerignore)
 COPY . .
 
-# Copy .env file
-COPY .env ./
+# Cloud Run injects PORT at runtime (default 8080) — app already reads process.env.PORT
+EXPOSE 8080
 
-# Expose Hugging Face Spaces port
-EXPOSE 7860
-
-
-# Set environment variables
-ENV HOST=0.0.0.0 \
-	PORT=7860
-
-# Start your server
+# Start server
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["node", "index.js"]

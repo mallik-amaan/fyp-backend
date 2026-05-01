@@ -14,3 +14,11 @@ build
 tmp
 logs
 *.log
+
+# Don't bake secrets or temp files into the image
+client_secret_*.json
+uploads/*
+output/*
+output.zip
+*.md
+*.pdf
