@@ -1,0 +1,42 @@
+{
+  "passed": true,
+  "skipped": false,
+  "confirmed_keys": [
+    "What is the candidate's full name?",
+    "What is the reference number?",
+    "What is the submission status?",
+    "What is the program year?",
+    "What is the candidate's first name?",
+    "What is the candidate's family name?",
+    "What is the preferred email address?",
+    "What is the candidate's gender identity?",
+    "What is the birth date?",
+    "What is the primary nationality?",
+    "What is the current enrollment location?",
+    "Does the candidate have a research organization affiliation?",
+    "What is the current institution?",
+    "What is the degree program?",
+    "What is the expected graduation date?",
+    "What is the cumulative GPA?"
+  ],
+  "similarities": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+  ],
+  "num_layout_elements": 0,
+  "valid_labels": true
+}

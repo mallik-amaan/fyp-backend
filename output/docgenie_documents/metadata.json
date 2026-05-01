@@ -1,0 +1,47 @@
+{
+  "dataset_name": "docgenie_documents",
+  "num_documents": 1,
+  "documents": [
+    {
+      "document_id": "document_1",
+      "has_handwriting": false,
+      "has_visual_elements": false,
+      "has_ocr": true,
+      "modification_type": null
+    }
+  ],
+  "structure_version": "2.0",
+  "structure_description": "Organized dataset following original pipeline structure",
+  "generation_metadata": {
+    "request_id": "7dc12c22-1dfe-4b6c-9c7c-a886db98f00e",
+    "user_id": 1,
+    "api_mode": "sync",
+    "prompt_params": {
+      "language": "English",
+      "doc_type": "business and administrative",
+      "gt_type": "Multiple questions about each document, with their answers taken **verbatim** from the document.",
+      "gt_format": "{\"<Text of question 1>\": \"<Answer to question 1>\", \"<Text of question 2>\": \"<Answer to question 2>\", ...}",
+      "num_solutions": 1,
+      "enable_handwriting": false,
+      "handwriting_ratio": 0.3,
+      "enable_visual_elements": true,
+      "visual_element_types": [
+        "stamp",
+        "logo",
+        "figure",
+        "barcode",
+        "photo"
+      ],
+      "seed": 0,
+      "enable_ocr": true,
+      "ocr_language": "en",
+      "enable_bbox_normalization": true,
+      "enable_gt_verification": true,
+      "enable_analysis": true,
+      "enable_debug_visualization": true,
+      "enable_dataset_export": true,
+      "dataset_export_format": "msgpack",
+      "output_detail": "dataset"
+    }
+  }
+}
