@@ -46,6 +46,7 @@ app.use('/docs',require(path.join(__dirname,'routes/docs.route.js')))
 app.use('/analytics',require(path.join(__dirname,'routes/analytics.route.js')))
 app.use('/generate',require(path.join(__dirname,'routes/generate.route.js')))
 app.use('/requests',require(path.join(__dirname,'routes/requests.route.js')))
+app.use('/redaction',require(path.join(__dirname,'routes/redaction.route.js')))
 //setting up the port
 app.listen(port,()=>{
     console.log(`Server started at port: ${port}`)

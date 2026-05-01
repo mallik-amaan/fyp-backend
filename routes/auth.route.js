@@ -5,7 +5,13 @@ const crypto = require("crypto")
 const { Resend } = require("resend")
 const router = express.Router()
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+// ─── Environment check (logged once at startup) ──────────────────────────────
+console.log("[auth] RESEND_API_KEY present:", !!process.env.RESEND_API_KEY)
+console.log("[auth] FROM_EMAIL:", process.env.FROM_EMAIL || "(not set — will use onboarding@resend.dev)")
+console.log("[auth] ACCESS_SECRET present:", !!process.env.ACCESS_SECRET)
+console.log("[auth] REFRESH_SECRET present:", !!process.env.REFRESH_SECRET)
+
+const resend    = new Resend(process.env.RESEND_API_KEY)
 const FROM_EMAIL = process.env.FROM_EMAIL || "onboarding@resend.dev"
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -19,11 +25,13 @@ function hashOTP(otp) {
 }
 
 async function sendOTPEmail(email, otp, purpose) {
+  console.log(`[sendOTPEmail] to=${email} purpose=${purpose} from=${FROM_EMAIL}`)
+
   const isReset = purpose === "reset_password"
   const subject = isReset ? "Reset your password — DocSynth" : "Verify your email — DocSynth"
   const action  = isReset ? "reset your password" : "verify your email address"
 
-  await resend.emails.send({
+  const { data, error } = await resend.emails.send({
     from: `DocSynth <${FROM_EMAIL}>`,
     to:   [email],
     subject,
@@ -44,17 +52,30 @@ async function sendOTPEmail(email, otp, purpose) {
       </div>
     `,
   })
+
+  if (error) {
+    console.error("[sendOTPEmail] Resend API error:", JSON.stringify(error))
+    throw new Error(error.message || "Failed to send email")
+  }
+
+  console.log(`[sendOTPEmail] delivered messageId=${data?.id} to=${email}`)
 }
 
 async function storeOTP(email, otp, purpose) {
+  console.log(`[storeOTP] email=${email} purpose=${purpose}`)
+
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
-  // Invalidate any prior unused OTPs for this email+purpose
-  await supabaseClient
+
+  const { error: invalidateError } = await supabaseClient
     .from("otps")
     .update({ used: true })
     .eq("email", email)
     .eq("purpose", purpose)
     .eq("used", false)
+
+  if (invalidateError) {
+    console.warn("[storeOTP] failed to invalidate old OTPs:", invalidateError.message)
+  }
 
   const { error } = await supabaseClient.from("otps").insert({
     email,
@@ -63,10 +84,18 @@ async function storeOTP(email, otp, purpose) {
     expires_at: expiresAt,
     used:       false,
   })
-  if (error) throw error
+
+  if (error) {
+    console.error("[storeOTP] insert failed:", error.message, "code:", error.code)
+    throw error
+  }
+
+  console.log(`[storeOTP] stored successfully for email=${email} expires=${expiresAt}`)
 }
 
 async function verifyStoredOTP(email, otp, purpose) {
+  console.log(`[verifyStoredOTP] email=${email} purpose=${purpose}`)
+
   const { data, error } = await supabaseClient
     .from("otps")
     .select("id, expires_at, used")
@@ -78,19 +107,43 @@ async function verifyStoredOTP(email, otp, purpose) {
     .limit(1)
     .single()
 
-  if (error || !data) return { valid: false, reason: "Invalid OTP" }
-  if (new Date(data.expires_at) < new Date()) return { valid: false, reason: "OTP has expired" }
+  if (error) {
+    console.warn(`[verifyStoredOTP] DB lookup failed: ${error.message} (code: ${error.code})`)
+    return { valid: false, reason: "Invalid OTP" }
+  }
 
-  await supabaseClient.from("otps").update({ used: true }).eq("id", data.id)
+  if (!data) {
+    console.warn(`[verifyStoredOTP] no matching OTP found for email=${email} purpose=${purpose}`)
+    return { valid: false, reason: "Invalid OTP" }
+  }
+
+  const now      = new Date()
+  const expiresAt = new Date(data.expires_at)
+  if (expiresAt < now) {
+    console.warn(`[verifyStoredOTP] OTP expired at ${data.expires_at} (now=${now.toISOString()})`)
+    return { valid: false, reason: "OTP has expired" }
+  }
+
+  const { error: markUsedError } = await supabaseClient
+    .from("otps")
+    .update({ used: true })
+    .eq("id", data.id)
+
+  if (markUsedError) {
+    console.warn("[verifyStoredOTP] failed to mark OTP as used:", markUsedError.message)
+  }
+
+  console.log(`[verifyStoredOTP] OTP verified successfully for email=${email}`)
   return { valid: true }
 }
 
 // ─── Signup ───────────────────────────────────────────────────────────────────
 
 router.post("/signup", async (req, res) => {
-  try {
-    const { email, password, username } = req.body
+  const { email, username } = req.body
+  console.log(`[signup] attempt email=${email} username=${username}`)
 
+  try {
     const { data: existingUser } = await supabaseClient
       .from("users")
       .select("id")
@@ -98,31 +151,35 @@ router.post("/signup", async (req, res) => {
       .single()
 
     if (existingUser) {
+      console.log(`[signup] duplicate email=${email}`)
       return res.status(200).json({ result: false, message: "Email already exists. Please use a different email." })
     }
 
+    console.log(`[signup] generating API key for username=${username}`)
     const api = await generateAPI(username)
 
     const { error: insertError } = await supabaseClient.from("users").insert([{
       username,
-      password_hash:  password,
+      password_hash:  req.body.password,
       email,
       api_id:         api[0]["id"],
       email_verified: false,
     }])
 
     if (insertError) {
-      console.error("Error inserting user:", insertError)
+      console.error("[signup] DB insert failed:", insertError.message, "code:", insertError.code)
       return res.status(500).json({ result: false, message: "Failed to create user." })
     }
 
+    console.log(`[signup] user created email=${email} — storing and sending OTP`)
     const otp = generateOTP()
     await storeOTP(email, otp, "verify_email")
     await sendOTPEmail(email, otp, "verify_email")
 
+    console.log(`[signup] complete email=${email}`)
     return res.json({ result: true, requiresVerification: true })
   } catch (err) {
-    console.error("Unexpected signup error:", err)
+    console.error("[signup] unexpected error:", err?.message || err)
     res.status(500).json({ result: false, message: "Unexpected server error." })
   }
 })
@@ -130,24 +187,32 @@ router.post("/signup", async (req, res) => {
 // ─── Login ────────────────────────────────────────────────────────────────────
 
 router.post("/login", async (req, res) => {
-  const { email, password } = req.body
+  const { email } = req.body
+  console.log(`[login] attempt email=${email}`)
 
-  const { data } = await supabaseClient
+  const { data, error: fetchError } = await supabaseClient
     .from("users")
     .select("id, username, email, password_hash, email_verified")
     .eq("email", email)
 
+  if (fetchError) {
+    console.error("[login] DB fetch error:", fetchError.message)
+  }
+
   if (!data || data.length === 0) {
+    console.log(`[login] no user found for email=${email}`)
     return res.json({ result: "false", message: "Incorrect Email or Password." })
   }
 
   const user = data[0]
 
-  if (user.password_hash !== password) {
+  if (user.password_hash !== req.body.password) {
+    console.log(`[login] wrong password for email=${email}`)
     return res.json({ result: "false", message: "Incorrect Email or Password." })
   }
 
   if (user.email_verified === false) {
+    console.log(`[login] unverified email=${email} — blocking login`)
     return res.status(200).json({
       result: false,
       message: "Email not verified. Please verify your email before logging in.",
@@ -169,9 +234,11 @@ router.post("/login", async (req, res) => {
   })
 
   if (tokenError) {
+    console.error("[login] failed to save refresh token:", tokenError.message)
     return res.json({ result: false, message: "Failed to save tokens to db" })
   }
 
+  console.log(`[login] success userId=${user.id} email=${email}`)
   res.json({
     result:   true,
     access:   accessToken,
@@ -186,34 +253,43 @@ router.post("/login", async (req, res) => {
 
 router.post("/send-otp", async (req, res) => {
   const { email, purpose } = req.body
+  console.log(`[send-otp] request email=${email} purpose=${purpose}`)
 
   if (!email || !["verify_email", "reset_password"].includes(purpose)) {
+    console.warn(`[send-otp] bad request — email=${email} purpose=${purpose}`)
     return res.status(400).json({ result: false, message: "email and valid purpose are required" })
   }
 
   try {
-    const { data: user } = await supabaseClient
+    const { data: user, error: fetchError } = await supabaseClient
       .from("users")
       .select("id, email_verified")
       .eq("email", email)
       .single()
 
+    if (fetchError && fetchError.code !== "PGRST116") {
+      console.error("[send-otp] DB fetch error:", fetchError.message)
+    }
+
     if (!user) {
-      // Don't leak whether the email exists for reset_password
+      console.log(`[send-otp] email=${email} not found in DB — returning silent success (${purpose})`)
       return res.json({ result: true })
     }
 
     if (purpose === "verify_email" && user.email_verified) {
+      console.log(`[send-otp] email=${email} already verified — skipping`)
       return res.json({ result: false, message: "Email is already verified." })
     }
 
+    console.log(`[send-otp] generating OTP for email=${email}`)
     const otp = generateOTP()
     await storeOTP(email, otp, purpose)
     await sendOTPEmail(email, otp, purpose)
 
+    console.log(`[send-otp] success email=${email} purpose=${purpose}`)
     res.json({ result: true })
   } catch (err) {
-    console.error("send-otp error:", err)
+    console.error("[send-otp] error:", err?.message || err)
     res.status(500).json({ result: false, message: "Failed to send OTP." })
   }
 })
@@ -222,8 +298,10 @@ router.post("/send-otp", async (req, res) => {
 
 router.post("/verify-otp", async (req, res) => {
   const { email, otp, purpose } = req.body
+  console.log(`[verify-otp] request email=${email} purpose=${purpose} otp_length=${otp?.length}`)
 
   if (!email || !otp || !purpose) {
+    console.warn(`[verify-otp] missing fields — email=${!!email} otp=${!!otp} purpose=${!!purpose}`)
     return res.status(400).json({ result: false, message: "email, otp, and purpose are required" })
   }
 
@@ -231,22 +309,34 @@ router.post("/verify-otp", async (req, res) => {
     const { valid, reason } = await verifyStoredOTP(email, otp, purpose)
 
     if (!valid) {
+      console.log(`[verify-otp] invalid — reason="${reason}" email=${email} purpose=${purpose}`)
       return res.status(400).json({ result: false, message: reason })
     }
 
     if (purpose === "verify_email") {
-      await supabaseClient.from("users").update({ email_verified: true }).eq("email", email)
+      const { error: updateError } = await supabaseClient
+        .from("users")
+        .update({ email_verified: true })
+        .eq("email", email)
+
+      if (updateError) {
+        console.error("[verify-otp] failed to mark email_verified:", updateError.message)
+        return res.status(500).json({ result: false, message: "Failed to verify email." })
+      }
+
+      console.log(`[verify-otp] email verified successfully email=${email}`)
       return res.json({ result: true })
     }
 
     if (purpose === "reset_password") {
       const resetToken = jwt.sign({ email, purpose: "reset" }, process.env.ACCESS_SECRET, { expiresIn: "10m" })
+      console.log(`[verify-otp] reset token issued for email=${email}`)
       return res.json({ result: true, reset_token: resetToken })
     }
 
     res.json({ result: true })
   } catch (err) {
-    console.error("verify-otp error:", err)
+    console.error("[verify-otp] unexpected error:", err?.message || err)
     res.status(500).json({ result: false, message: "Failed to verify OTP." })
   }
 })
@@ -254,9 +344,12 @@ router.post("/verify-otp", async (req, res) => {
 // ─── Reset Password ───────────────────────────────────────────────────────────
 
 router.post("/reset-password", async (req, res) => {
+  console.log("[reset-password] request received")
+
   const { reset_token, new_password } = req.body
 
   if (!reset_token || !new_password) {
+    console.warn("[reset-password] missing reset_token or new_password")
     return res.status(400).json({ result: false, message: "reset_token and new_password are required" })
   }
 
@@ -264,24 +357,31 @@ router.post("/reset-password", async (req, res) => {
     let decoded
     try {
       decoded = jwt.verify(reset_token, process.env.ACCESS_SECRET)
-    } catch {
+    } catch (jwtErr) {
+      console.warn("[reset-password] JWT verification failed:", jwtErr?.message)
       return res.status(400).json({ result: false, message: "Reset link has expired. Please request a new one." })
     }
 
     if (decoded.purpose !== "reset") {
+      console.warn("[reset-password] wrong token purpose:", decoded.purpose)
       return res.status(400).json({ result: false, message: "Invalid reset token." })
     }
 
+    console.log(`[reset-password] updating password for email=${decoded.email}`)
     const { error } = await supabaseClient
       .from("users")
       .update({ password_hash: new_password })
       .eq("email", decoded.email)
 
-    if (error) throw error
+    if (error) {
+      console.error("[reset-password] DB update failed:", error.message)
+      throw error
+    }
 
+    console.log(`[reset-password] success email=${decoded.email}`)
     res.json({ result: true })
   } catch (err) {
-    console.error("reset-password error:", err)
+    console.error("[reset-password] unexpected error:", err?.message || err)
     res.status(500).json({ result: false, message: "Failed to reset password." })
   }
 })

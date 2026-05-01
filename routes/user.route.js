@@ -17,7 +17,12 @@ router.post('/get-dashboard-stats', async (req, res) => {
 
     if (error) throw error;
 
-    const documents = data || [];
+    const all = data || [];
+
+    // Split into generation vs standalone-redaction requests
+    const documents = all.filter(d => d.metadata?.request_type !== 'redaction_only');
+    const redactionDocs = all.filter(d => d.metadata?.request_type === 'redaction_only');
+
     const total = documents.length;
     const completed = documents.filter(d => d.status === 'completed').length;
     const flagged = documents.filter(d => d.status === 'flagged').length;
@@ -32,6 +37,9 @@ router.post('/get-dashboard-stats', async (req, res) => {
     // Success ratio = fully-clean completions out of all finalized requests (completed + flagged + failed)
     const finalized = completed + flagged + failed;
     const successRatio = finalized > 0 ? Math.round((completed / finalized) * 100) : 0;
+
+    // Count standalone redactions that finished successfully
+    const redactionsCompleted = redactionDocs.filter(d => d.status === 'redacted').length;
 
     const recentGenerations = [...documents]
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
@@ -51,6 +59,7 @@ router.post('/get-dashboard-stats', async (req, res) => {
       successRatio: `${successRatio}%`,
       processingQueue: processing,
       pendingReview,
+      redactionsCompleted,
       recentGenerations
     });
 
