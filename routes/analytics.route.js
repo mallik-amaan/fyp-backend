@@ -93,7 +93,8 @@ router.post('/submit-review', async (req, res) => {
 
     if (fetchError) throw fetchError;
 
-    const newStatus = 'completed';
+    const hasFlagged = pairs && pairs.some(p => p.flagged);
+    const newStatus = hasFlagged ? 'flagged' : 'completed';
 
     const { error } = await supabase
       .from('document_requests')

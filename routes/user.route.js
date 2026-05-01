@@ -21,14 +21,17 @@ router.post('/get-dashboard-stats', async (req, res) => {
     const total = documents.length;
     const completed = documents.filter(d => d.status === 'completed').length;
     const flagged = documents.filter(d => d.status === 'flagged').length;
+    const failed = documents.filter(d => d.status === 'failed').length;
     const processing = documents.filter(d => !['completed', 'failed', 'flagged'].includes(d.status)).length;
     const pendingReview = documents.filter(d => ['redacted', 'review'].includes(d.status)).length;
 
     const totalDocsGenerated = documents
-      .filter(d => d.status === 'completed')
+      .filter(d => d.status === 'completed' || d.status === 'flagged')
       .reduce((sum, d) => sum + (d.metadata?.numSolutions || 1), 0);
 
-    const successRatio = total > 0 ? Math.round((completed / total) * 100) : 0;
+    // Success ratio = fully-clean completions out of all finalized requests (completed + flagged + failed)
+    const finalized = completed + flagged + failed;
+    const successRatio = finalized > 0 ? Math.round((completed / finalized) * 100) : 0;
 
     const recentGenerations = [...documents]
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))

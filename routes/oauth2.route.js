@@ -109,4 +109,37 @@ router.get("/google/status", authenticateToken, async (req, res) => {
   res.json({ connected: !error && data?.is_connected === true });
 });
 
+// 4. Disconnect Google Drive
+router.post("/google/disconnect", authenticateToken, async (req, res) => {
+  const userEmail = req.user.email;
+
+  const { data: userData, error: userError } = await supabaseClient
+    .from("users")
+    .select("id")
+    .eq("email", userEmail)
+    .single();
+
+  if (userError || !userData) {
+    return res.status(404).json({ success: false, message: "User not found" });
+  }
+
+  const { error } = await supabaseClient
+    .from("user_integrations")
+    .update({
+      access_token: null,
+      refresh_token: null,
+      token_expires_at: null,
+      is_connected: false,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("user_id", userData.id)
+    .eq("provider", "google_drive");
+
+  if (error) {
+    return res.status(500).json({ success: false, message: "Failed to disconnect Google Drive" });
+  }
+
+  res.json({ success: true, message: "Google Drive disconnected successfully" });
+});
+
 module.exports = router;

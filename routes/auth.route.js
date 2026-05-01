@@ -263,6 +263,26 @@ router.post('/change-password',async (req,res)=>{
         })    }
 })
 
+router.post('/update-profile', async (req, res) => {
+  const { id, username } = req.body;
+
+  if (!id || !username || !username.trim()) {
+    return res.status(400).json({ result: false, message: 'User ID and name are required.' });
+  }
+
+  const { error } = await supabaseClient
+    .from('users')
+    .update({ username: username.trim() })
+    .eq('id', id);
+
+  if (error) {
+    console.error('Update profile error:', error);
+    return res.status(500).json({ result: false, message: 'Failed to update name.' });
+  }
+
+  return res.json({ result: true, username: username.trim() });
+});
+
 router.get('/:id/get-api-key',(req,res)=>{
   (async () => {
     try {
