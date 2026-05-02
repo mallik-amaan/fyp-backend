@@ -443,7 +443,7 @@ router.post('/:requestId/approve', async (req, res) => {
         };
 
         // ---------- Send request to generation service ----------
-        const generate_response = await fetch(`${GENERATION_URL}/generate/async`, {
+        const generate_response = await fetch(`${GENERATION_URL}/generate/pdf`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
