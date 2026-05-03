@@ -27,17 +27,28 @@ router.post('/get-dashboard-stats', async (req, res) => {
 
     const total = documents.length;
     const completed = documents.filter(d => COMPLETED_STATUSES.includes(d.status)).length;
-    const flagged = documents.filter(d => d.status === 'flagged').length;
     const failed = documents.filter(d => d.status === 'failed').length;
-    const processing = documents.filter(d => !COMPLETED_STATUSES.includes(d.status) && !['failed', 'flagged'].includes(d.status)).length;
+    const processing = documents.filter(d => !COMPLETED_STATUSES.includes(d.status) && !['failed'].includes(d.status)).length;
     const pendingReview = documents.filter(d => ['redacted', 'review'].includes(d.status)).length;
 
     const totalDocsGenerated = documents
-      .filter(d => COMPLETED_STATUSES.includes(d.status) || d.status === 'flagged')
+      .filter(d => COMPLETED_STATUSES.includes(d.status))
       .reduce((sum, d) => sum + (d.metadata?.numSolutions || 1), 0);
 
-    // Success ratio = docs-produced completions out of all finalized requests (completed variants + flagged + failed)
-    const finalized = completed + flagged + failed;
+    // Count flagged individual documents from generated_documents table
+    const requestIds = documents.map(d => d.id);
+    let flaggedDocs = 0;
+    if (requestIds.length > 0) {
+      const { count, error: flagError } = await supabaseClient
+        .from('generated_documents')
+        .select('id', { count: 'exact', head: true })
+        .in('request_id', requestIds)
+        .eq('flagged', true);
+      if (!flagError) flaggedDocs = count || 0;
+    }
+
+    // Success ratio = completed requests out of all finalized (completed variants + failed)
+    const finalized = completed + failed;
     const successRatio = finalized > 0 ? Math.round((completed / finalized) * 100) : 0;
 
     // Count standalone redactions that finished successfully
@@ -57,7 +68,7 @@ router.post('/get-dashboard-stats', async (req, res) => {
     res.json({
       generatedDocs: total,
       requestedDocs: totalDocsGenerated,
-      flaggedDocs: flagged,
+      flaggedDocs,
       successRatio: `${successRatio}%`,
       processingQueue: processing,
       pendingReview,
