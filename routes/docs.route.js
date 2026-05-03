@@ -34,23 +34,15 @@ router.post('/download-generated-docs', async (req, res) => {
   }
 
   try {
-    // First check generated_documents table (populated by generation service)
-    const { data: genData } = await supabaseClient
-      .from('generated_documents')
-      .select('file_url')
-      .eq('request_id', docId)
-      .limit(1)
+    // Check document_requests for zip_url (single source of truth for ZIP)
+    const { data: reqData } = await supabaseClient
+      .from('document_requests')
+      .select('zip_url')
+      .eq('id', docId)
       .single();
 
-    if (genData?.file_url) {
-      let downloadUrl = genData.file_url;
-      if (downloadUrl.includes('drive.google.com')) {
-        const fileMatch = downloadUrl.match(/\/file\/d\/([^/]+)/);
-        const idMatch = downloadUrl.match(/[?&]id=([^&]+)/);
-        const fileId = fileMatch?.[1] || idMatch?.[1];
-        if (fileId) downloadUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
-      }
-      return res.json({ success: true, url: downloadUrl });
+    if (reqData?.zip_url) {
+      return res.json({ success: true, url: reqData.zip_url });
     }
 
     // Fall back: find ZIP in storage under requestId folder
