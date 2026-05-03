@@ -517,11 +517,11 @@ router.post('/:requestId/get-download-link', async (req, res) => {
     console.log(requestId)
     const { data, error } = await supabase
       .from("generated_documents")
-      .select("file_url, zip_url")
+      .select("file_url")
       .eq("request_id", requestId)
 
     if (error) {
-      return res.status(400).json({
+      return res.status(500).json({
         success: false,
         message: error.message
       });
@@ -544,12 +544,6 @@ router.post('/:requestId/get-download-link', async (req, res) => {
       }
 
       return res.status(404).json({ success: false, message: "No file found for this request" });
-    }
-
-    // Prefer zip_url (direct Supabase storage) over file_url (Google Drive)
-    const zipUrl = data[0]['zip_url'];
-    if (zipUrl) {
-      return res.json({ success: true, url: zipUrl });
     }
 
     const fileUrl = data[0]['file_url'];

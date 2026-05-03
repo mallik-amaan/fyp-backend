@@ -17,7 +17,8 @@ router.post("/get-generated-docs", async (req, res) => {
 
     if (error) throw error;
 
-    return res.status(200).json({ success: true, documents: data || [] });
+    const filtered = (data || []).filter(d => d.metadata?.request_type !== 'redaction_only');
+    return res.status(200).json({ success: true, documents: filtered });
   } catch (err) {
     console.error("Unexpected server error:", err);
     res.status(500).json({ success: false, message: "Unexpected server error", details: err.message });
@@ -42,7 +43,14 @@ router.post('/download-generated-docs', async (req, res) => {
       .single();
 
     if (genData?.file_url) {
-      return res.json({ success: true, url: genData.file_url });
+      let downloadUrl = genData.file_url;
+      if (downloadUrl.includes('drive.google.com')) {
+        const fileMatch = downloadUrl.match(/\/file\/d\/([^/]+)/);
+        const idMatch = downloadUrl.match(/[?&]id=([^&]+)/);
+        const fileId = fileMatch?.[1] || idMatch?.[1];
+        if (fileId) downloadUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+      }
+      return res.json({ success: true, url: downloadUrl });
     }
 
     // Fall back: find ZIP in storage under requestId folder
