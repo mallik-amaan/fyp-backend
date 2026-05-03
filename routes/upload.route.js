@@ -68,8 +68,9 @@ router.post("/storage",upload.single("file"),async (req,res) => {
       return res.status(400).json({ result: false, message: "No file uploaded" });
     }
 
-    // Validate file type - only allow PDF
-    if (req.file.mimetype !== "application/pdf") {
+    // Validate by both mimetype and extension to prevent Content-Type spoofing
+    const ext = require("path").extname(req.file.originalname).toLowerCase();
+    if (req.file.mimetype !== "application/pdf" || ext !== ".pdf") {
       fs.unlinkSync(req.file.path);
       return res.status(400).json({ result: false, message: "Only PDF files are allowed" });
     }

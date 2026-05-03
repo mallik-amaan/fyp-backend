@@ -23,18 +23,20 @@ router.post('/get-dashboard-stats', async (req, res) => {
     const documents = all.filter(d => d.metadata?.request_type !== 'redaction_only');
     const redactionDocs = all.filter(d => d.metadata?.request_type === 'redaction_only');
 
+    const COMPLETED_STATUSES = ['completed', 'completed_no_gdrive', 'completed_gdrive_failed'];
+
     const total = documents.length;
-    const completed = documents.filter(d => d.status === 'completed').length;
+    const completed = documents.filter(d => COMPLETED_STATUSES.includes(d.status)).length;
     const flagged = documents.filter(d => d.status === 'flagged').length;
     const failed = documents.filter(d => d.status === 'failed').length;
-    const processing = documents.filter(d => !['completed', 'failed', 'flagged'].includes(d.status)).length;
+    const processing = documents.filter(d => !COMPLETED_STATUSES.includes(d.status) && !['failed', 'flagged'].includes(d.status)).length;
     const pendingReview = documents.filter(d => ['redacted', 'review'].includes(d.status)).length;
 
     const totalDocsGenerated = documents
-      .filter(d => d.status === 'completed' || d.status === 'flagged')
+      .filter(d => COMPLETED_STATUSES.includes(d.status) || d.status === 'flagged')
       .reduce((sum, d) => sum + (d.metadata?.numSolutions || 1), 0);
 
-    // Success ratio = fully-clean completions out of all finalized requests (completed + flagged + failed)
+    // Success ratio = docs-produced completions out of all finalized requests (completed variants + flagged + failed)
     const finalized = completed + flagged + failed;
     const successRatio = finalized > 0 ? Math.round((completed / finalized) * 100) : 0;
 
