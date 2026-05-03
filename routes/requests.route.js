@@ -449,7 +449,8 @@ router.post('/:requestId/approve', async (req, res) => {
         };
 
         // ---------- Send request to generation service ----------
-        const generate_response = await fetch(`${GENERATION_URL}/generate/pdf`, {
+        const generateEndpoint = metadata.batch_processing ? '/generate/async' : '/generate/pdf';
+        const generate_response = await fetch(`${GENERATION_URL}${generateEndpoint}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
