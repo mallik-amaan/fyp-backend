@@ -421,7 +421,13 @@ router.post('/:requestId/approve', async (req, res) => {
             "gt_format": metadata.gt_format || "{\"<Text of question 1>\": \"<Answer to question 1>\", \"<Text of question 2>\": \"<Answer to question 2>\", ...}",
             "num_solutions": metadata.numSolutions || 1,
             "enable_handwriting": metadata.enable_handwriting !== undefined ? metadata.enable_handwriting : false,
-            "handwriting_ratio": metadata.handwriting_ratio || 0.3,
+            "handwriting_ratio": metadata.handwriting_ratio !== undefined ? metadata.handwriting_ratio : 0.2,
+            "handwriting_apply_ink_filter": metadata.handwriting_apply_ink_filter !== undefined ? metadata.handwriting_apply_ink_filter : true,
+            "handwriting_enable_enhancements": metadata.handwriting_enable_enhancements !== undefined ? metadata.handwriting_enable_enhancements : false,
+            "handwriting_num_inference_steps": metadata.handwriting_num_inference_steps || 1000,
+            "handwriting_writer_ids": (Array.isArray(metadata.handwriting_writer_ids) && metadata.handwriting_writer_ids.length > 0)
+              ? metadata.handwriting_writer_ids
+              : [404, 347, 156, 253, 354, 166, 320],
             "enable_visual_elements": Array.isArray(metadata.visual_element_types)
               ? metadata.visual_element_types.length > 0
               : true,
