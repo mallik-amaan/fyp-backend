@@ -88,7 +88,7 @@ router.post('/submit-review', async (req, res) => {
   try {
     // Use flagged array sent by frontend directly (non-empty = has flagged docs)
     const hasFlagged = Array.isArray(flagged) ? flagged.length > 0 : false;
-    const newStatus = hasFlagged ? 'flagged' : 'completed';
+    const newStatus = hasFlagged ? 'flagged' : 'reviewed';
 
     console.log(`[submit-review] sessionId=${sessionId} flagged=${JSON.stringify(flagged)} → status=${newStatus}`)
 
