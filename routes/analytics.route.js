@@ -93,8 +93,8 @@ router.post('/submit-review', async (req, res) => {
     console.log(`[submit-review] sessionId=${sessionId} flagged=${JSON.stringify(flagged)} → status=${newStatus}`)
 
     const { error } = await supabase
-      .from('document_requests')
-      .update({ status: newStatus, updated_at: new Date().toISOString() })
+      .from('generated_documents')
+      .update({ flagged: true, updated_at: new Date().toISOString() })
       .eq('id', sessionId);
 
     if (error) {

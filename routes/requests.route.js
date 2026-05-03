@@ -515,10 +515,12 @@ router.post('/:requestId/get-download-link', async (req, res) => {
 
   try {
     console.log(requestId)
+    // zip_url on document_requests is the single source of truth for the ZIP download
     const { data, error } = await supabase
-      .from("generated_documents")
-      .select("file_url")
-      .eq("request_id", requestId)
+      .from("document_requests")
+      .select("zip_url")
+      .eq("id", requestId)
+      .single();
 
     if (error) {
       return res.status(500).json({
@@ -527,62 +529,26 @@ router.post('/:requestId/get-download-link', async (req, res) => {
       });
     }
 
-    if (!data || data.length === 0) {
-      // Fall back to Supabase storage when no record exists
-      const { data: storageFiles } = await supabase.storage
+    if (data?.zip_url) {
+      return res.json({ success: true, url: data.zip_url });
+    }
+
+    // Fall back to Supabase storage when zip_url is not yet populated
+    const { data: storageFiles } = await supabase.storage
+      .from('doc_storage')
+      .list(requestId, { limit: 100 });
+
+    const zipFile = storageFiles?.find(f => f.name.startsWith('output_') && f.name.endsWith('.zip'));
+    if (zipFile) {
+      const { data: signedData } = await supabase.storage
         .from('doc_storage')
-        .list(requestId, { limit: 100 });
-
-      const zipFile = storageFiles?.find(f => f.name.startsWith('output_') && f.name.endsWith('.zip'));
-      if (zipFile) {
-        const { data: signedData } = await supabase.storage
-          .from('doc_storage')
-          .createSignedUrl(`${requestId}/${zipFile.name}`, 60 * 60 * 24);
-        if (signedData?.signedUrl) {
-          return res.json({ success: true, url: signedData.signedUrl });
-        }
-      }
-
-      return res.status(404).json({ success: false, message: "No file found for this request" });
-    }
-
-    const fileUrl = data[0]['file_url'];
-    console.log(`url: ${fileUrl}`);
-
-    if (!fileUrl) {
-      return res.status(404).json({ success: false, message: "No file found for this request" });
-    }
-
-    // ---------- Convert Google Drive view link to download link ----------
-    let downloadUrl = fileUrl;
-    
-    // Check if it's a Google Drive link
-    if (fileUrl.includes('drive.google.com')) {
-      // Extract file ID from URL patterns:
-      // https://drive.google.com/file/d/{FILE_ID}/view?usp=drivesdk
-      // https://drive.google.com/open?id={FILE_ID}
-      let fileId = null;
-      
-      const fileMatch = fileUrl.match(/\/file\/d\/([^\/]+)/);
-      if (fileMatch) {
-        fileId = fileMatch[1];
-      } else {
-        const idMatch = fileUrl.match(/[?&]id=([^&]+)/);
-        if (idMatch) {
-          fileId = idMatch[1];
-        }
-      }
-
-      if (fileId) {
-        // Convert to direct download link
-        downloadUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+        .createSignedUrl(`${requestId}/${zipFile.name}`, 60 * 60 * 24);
+      if (signedData?.signedUrl) {
+        return res.json({ success: true, url: signedData.signedUrl });
       }
     }
 
-    return res.json({
-      success: true,
-      url: downloadUrl
-    });
+    return res.status(404).json({ success: false, message: "No file found for this request" });
 
   } catch (error) {
     console.error(error);
